@@ -126,17 +126,14 @@ def parse_date_only(value):
     s = str(value).strip()
     if not s:
         return None
-    # Tách phần đầu (thường chứa ngày) trước dấu xuống dòng, dấu gạch, hoặc khoảng trắng + chữ
-    # Tìm pattern dd/mm/yyyy hoặc yyyy-mm-dd trong chuỗi
-    m = re.search(r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})", s)
-    if m:
-        candidate = m.group(1).replace("-", "/")
-        for fmt in ("%d/%m/%Y", "%d/%m/%y"):
-            try:
-                d = datetime.strptime(candidate, fmt)
-                return d.strftime("%d/%m/%Y")
-            except ValueError:
-                pass
+    # Ưu tiên 1: thử parse nguyên chuỗi (dùng cho Techcombank "2026-05-14" hoặc datetime string)
+    for fmt in _DATE_PATTERNS:
+        try:
+            d = datetime.strptime(s, fmt)
+            return d.strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    # Ưu tiên 2: tìm pattern yyyy-mm-dd trong chuỗi (trước pattern dd/mm/yy để tránh nhầm)
     m = re.search(r"(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})", s)
     if m:
         candidate = m.group(1).replace("-", "/")
@@ -145,14 +142,51 @@ def parse_date_only(value):
             return d.strftime("%d/%m/%Y")
         except ValueError:
             pass
-    # fallback: thử nguyên chuỗi
+    # Ưu tiên 3: tìm pattern dd/mm/yyyy (dùng cho Vietcombank "22/04/2026\n5284 - 37679")
+    m = re.search(r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{4})", s)
+    if m:
+        candidate = m.group(1).replace("-", "/")
+        try:
+            d = datetime.strptime(candidate, "%d/%m/%Y")
+            return d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    # Ưu tiên 4: dd/mm/yy (năm 2 chữ số) — cuối cùng vì dễ nhầm
+    m = re.search(r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2})\b", s)
+    if m:
+        candidate = m.group(1).replace("-", "/")
+        try:
+            d = datetime.strptime(candidate, "%d/%m/%y")
+            return d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    return None
+
+
+def format_phieu_thu_date(value):
+    """
+    Phiếu thu — quy tắc:
+    - Nếu cell chỉ chứa 1 ngày (Techcombank "2026-05-14", datetime) → chuẩn hóa dd/mm/yyyy
+    - Nếu cell chứa thêm thông tin khác (Vietcombank "22/04/2026\\n5284-37679") → giữ nguyên giá trị gốc
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    s = str(value).strip()
+    if not s:
+        return ""
+    # Nếu nguyên chuỗi đúng là 1 ngày → chuẩn hóa
     for fmt in _DATE_PATTERNS:
         try:
             d = datetime.strptime(s, fmt)
             return d.strftime("%d/%m/%Y")
         except ValueError:
             continue
-    return None
+    # Có thêm thông tin → giữ nguyên (Vietcombank case)
+    return s
 
 
 # ============================================================
@@ -337,6 +371,11 @@ def read_bank_statement(source, log_rows: list):
         # Cần có ít nhất một trong credit/debit là số > 0 hoặc có ngày
         credit_num = to_number(credit_raw)
         debit_num = to_number(debit_raw)
+        # Một số ngân hàng (Techcombank) ghi Debit dạng số âm — luôn lấy giá trị tuyệt đối
+        if credit_num is not None:
+            credit_num = abs(credit_num)
+        if debit_num is not None:
+            debit_num = abs(debit_num)
         if credit_num is None and debit_num is None and not ngay_raw:
             continue
 
@@ -502,13 +541,7 @@ def build_output(transactions: list, bank_lookup: dict, stat_codes: list, log_ro
 
         # ============ PHIẾU THU ============
         if has_credit:
-            ngay_raw_str = tx["ngay_raw"]
-            if isinstance(ngay_raw_str, datetime):
-                ngay_raw_str = ngay_raw_str.strftime("%d/%m/%Y")
-            elif isinstance(ngay_raw_str, date):
-                ngay_raw_str = ngay_raw_str.strftime("%d/%m/%Y")
-            else:
-                ngay_raw_str = str(ngay_raw_str) if ngay_raw_str is not None else ""
+            ngay_raw_str = format_phieu_thu_date(tx["ngay_raw"])
 
             if thu_cols["ngay_hach_toan"]:
                 ws_thu.cell(thu_row, thu_cols["ngay_hach_toan"], ngay_raw_str)
