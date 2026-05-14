@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/process.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": "{kt.py,ngan-hang.xlsx,ma-thong-ke.xlsx,Template-dau-ra.xlsx}"
+      }
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/process.py" },
+    { "src": "/", "dest": "/index.html" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
