@@ -90,19 +90,18 @@ def clean_account_str(value) -> str:
 
 
 def to_number(value):
-    """Chuẩn hóa số tiền về kiểu số (float/int). Trả về None nếu rỗng/0."""
+    """Chuẩn hóa số tiền về kiểu số (float/int). Trả về None nếu rỗng/không parse được. Giữ giá trị 0."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return value if value != 0 else None
+        return value
     s = str(value).strip()
     if not s:
         return None
     s = s.replace(",", "").replace(" ", "")
     s = s.replace("VND", "").replace("vnd", "")
     try:
-        num = float(s)
-        return num if num != 0 else None
+        return float(s)
     except ValueError:
         return None
 
@@ -517,8 +516,9 @@ def build_output(transactions: list, bank_lookup: dict, stat_codes: list, log_ro
     for tx in transactions:
         notes_thu = []
         notes_chi = []
-        has_credit = tx["credit"] is not None and tx["credit"] != 0
-        has_debit = tx["debit"] is not None and tx["debit"] != 0
+        # Debit/Credit = 0 vẫn coi là có giao dịch (cột Số tiền sẽ để trống)
+        has_credit = tx["credit"] is not None
+        has_debit = tx["debit"] is not None
 
         # Cảnh báo trùng
         if "_dup_with" in tx:
@@ -555,8 +555,10 @@ def build_output(transactions: list, bank_lookup: dict, stat_codes: list, log_ro
             if thu_cols["tk_no"]:
                 ws_thu.cell(thu_row, thu_cols["tk_no"], TK_NO_PHIEU_THU)
             if thu_cols["so_tien"]:
-                c = ws_thu.cell(thu_row, thu_cols["so_tien"], tx["credit"])
-                c.number_format = "#,##0"
+                # Credit = 0 → để trống cột Số tiền theo yêu cầu
+                if tx["credit"] and tx["credit"] != 0:
+                    c = ws_thu.cell(thu_row, thu_cols["so_tien"], tx["credit"])
+                    c.number_format = "#,##0"
 
             # Tra ngân hàng
             bank_name = bank_lookup.get(tx["account_number"], "")
@@ -603,8 +605,10 @@ def build_output(transactions: list, bank_lookup: dict, stat_codes: list, log_ro
             if chi_cols["tk_co"]:
                 ws_chi.cell(chi_row, chi_cols["tk_co"], TK_CO_PHIEU_CHI)
             if chi_cols["so_tien"]:
-                c = ws_chi.cell(chi_row, chi_cols["so_tien"], tx["debit"])
-                c.number_format = "#,##0"
+                # Debit = 0 → để trống cột Số tiền theo yêu cầu
+                if tx["debit"] and tx["debit"] != 0:
+                    c = ws_chi.cell(chi_row, chi_cols["so_tien"], tx["debit"])
+                    c.number_format = "#,##0"
             if chi_cols["noi_dung_tt"]:
                 ws_chi.cell(chi_row, chi_cols["noi_dung_tt"], noi_dung_tt)
             if chi_cols["ma_don_vi"]:

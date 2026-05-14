@@ -271,8 +271,13 @@
         <dl class="meta-grid" id="metaGrid">
           <dt>File kết quả</dt><dd id="metaFile">—</dd>
           <dt>Thời gian xử lý</dt><dd id="metaTime">—</dd>
-          <dt>Cảnh báo (LOG)</dt><dd id="metaLog">—</dd>
+          <dt>Cảnh báo</dt><dd id="metaLog">—</dd>
         </dl>
+
+        <details id="logDetails" style="display:none; margin-bottom: 12px;">
+          <summary style="cursor: pointer; font-size: 13px; color: var(--text-muted); user-select: none;">Xem chi tiết cảnh báo</summary>
+          <ul id="logList" style="margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--text); max-height: 240px; overflow-y: auto;"></ul>
+        </details>
 
         <button class="secondary" id="redownloadBtn" style="display:none;">Tải lại file</button>
       </div>
@@ -295,6 +300,8 @@
     const metaFile = document.getElementById('metaFile');
     const metaTime = document.getElementById('metaTime');
     const metaLog = document.getElementById('metaLog');
+    const logDetails = document.getElementById('logDetails');
+    const logList = document.getElementById('logList');
     const redownloadBtn = document.getElementById('redownloadBtn');
 
     let currentFile = null;
@@ -358,6 +365,8 @@
       metaFile.textContent = currentFile.name;
       metaTime.textContent = '...';
       metaLog.textContent = '...';
+      logDetails.style.display = 'none';
+      logList.innerHTML = '';
       redownloadBtn.style.display = 'none';
 
       const startTs = Date.now();
@@ -389,7 +398,27 @@
         setStatus('success', 'Hoàn tất — file đã tải về máy.', ICON_CHECK);
         metaFile.textContent = filename;
         metaTime.textContent = elapsed + ' giây';
-        metaLog.textContent = logCount === '0' ? 'Không có cảnh báo' : (logCount + ' dòng — xem sheet LOG trong file');
+        if (logCount === '0') {
+          metaLog.textContent = 'Không có cảnh báo';
+        } else {
+          metaLog.textContent = logCount + ' dòng cảnh báo';
+          // Parse and show details
+          const logDetailHeader = res.headers.get('X-Log-Detail');
+          if (logDetailHeader) {
+            try {
+              const json = decodeURIComponent(escape(atob(logDetailHeader)));
+              const items = JSON.parse(json);
+              logList.innerHTML = '';
+              items.forEach(it => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '4px';
+                li.innerHTML = '<strong>Dòng ' + it.row + '</strong> [' + it.sheet + '] <em>' + it.kind + ':</em> ' + it.detail;
+                logList.appendChild(li);
+              });
+              logDetails.style.display = 'block';
+            } catch (e) {}
+          }
+        }
         redownloadBtn.style.display = 'inline-block';
       } catch (err) {
         setStatus('error', 'Lỗi: ' + err.message, ICON_X);

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Serverless function cho Vercel — nhận file sao kê (POST multipart), trả file kết quả."""
 
+import base64
+import json
 import os
 import sys
 from datetime import datetime
@@ -58,6 +60,14 @@ def handle_process():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     response.headers["X-Log-Count"] = str(len(log_rows))
+    # Đóng gói chi tiết cảnh báo vào header (base64 JSON để giữ unicode an toàn)
+    if log_rows:
+        compact = [
+            {"row": r[1], "sheet": r[2], "kind": r[3], "detail": r[4]}
+            for r in log_rows
+        ]
+        encoded = base64.b64encode(json.dumps(compact, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        response.headers["X-Log-Detail"] = encoded
     return response
 
 
